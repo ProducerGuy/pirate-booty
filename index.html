@@ -1,0 +1,127 @@
+<title>Freebooter Install</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&display=swap">
+<style>
+  :root {
+    /* Committed single "night flag" world — painted explicitly so it holds on any host ground */
+    --ground: #0c0d10;
+    --panel:  #14161c;
+    --ink:    #ece7db;   /* bone / parchment */
+    --muted:  #8b8f9a;   /* weathered grey */
+    --brass:  #d8a94b;   /* doubloon */
+    --brass-deep: #b8862f;
+    --line:   #23262f;
+    --ok:     #6fbf8b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background:
+      radial-gradient(120% 80% at 50% -10%, #171a22 0%, var(--ground) 60%) fixed,
+      var(--ground);
+    color: var(--ink);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    min-height: 100dvh;
+    display: grid;
+    place-items: center;
+    padding: 28px 20px calc(28px + env(safe-area-inset-bottom));
+    -webkit-text-size-adjust: 100%;
+  }
+  .card { width: 100%; max-width: 420px; text-align: center; }
+
+  .flag {
+    font-size: 92px;
+    line-height: 1;
+    filter: drop-shadow(0 6px 22px rgba(0,0,0,.6));
+  }
+  .wordmark {
+    font-family: "Cinzel", Georgia, "Times New Roman", serif;
+    font-weight: 800;
+    font-size: clamp(2rem, 9vw, 2.6rem);
+    letter-spacing: .14em;
+    text-indent: .14em;                 /* balance the trailing letter-spacing */
+    margin: 10px 0 2px;
+    color: var(--ink);
+    text-wrap: balance;
+  }
+  .rule {
+    width: 64px; height: 2px; margin: 10px auto 14px;
+    background: linear-gradient(90deg, transparent, var(--brass), transparent);
+  }
+  .tag { color: var(--muted); margin: 0 auto 26px; max-width: 34ch; }
+
+  .install {
+    display: block;
+    width: 100%;
+    padding: 18px 22px;
+    border: 0;
+    border-radius: 14px;
+    background: linear-gradient(180deg, var(--brass), var(--brass-deep));
+    color: #221806;
+    font: 700 1.18rem/1.2 -apple-system, system-ui, sans-serif;
+    letter-spacing: .01em;
+    text-decoration: none;
+    box-shadow: 0 6px 20px rgba(216,169,75,.22), inset 0 1px 0 rgba(255,255,255,.35);
+    transition: transform .08s ease, box-shadow .2s ease;
+  }
+  .install:active { transform: translateY(1px); box-shadow: 0 3px 12px rgba(216,169,75,.2); }
+  .install:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+
+  .stamp {
+    font: 12.5px/1.6 ui-monospace, "SF Mono", Menlo, monospace;
+    color: var(--muted);
+    letter-spacing: .02em;
+    margin-top: 14px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .steps {
+    list-style: none;
+    margin: 26px 0 0;
+    padding: 16px 18px;
+    text-align: left;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    display: grid;
+    gap: 10px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .steps li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: start; }
+  .steps b { color: var(--ink); font-weight: 600; }
+  .num {
+    font: 700 12px/20px ui-monospace, monospace;
+    text-align: center;
+    color: var(--brass);
+    border: 1px solid var(--brass-deep);
+    border-radius: 6px;
+    height: 20px;
+  }
+  .foot { margin-top: 18px; font-size: 12px; color: var(--muted); }
+  .foot .dot { color: var(--ok); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .card > * { animation: rise .5s ease both; }
+    .card > *:nth-child(2){ animation-delay:.04s } .card > *:nth-child(3){ animation-delay:.08s }
+    .card > *:nth-child(4){ animation-delay:.12s } .card > *:nth-child(5){ animation-delay:.16s }
+    @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  }
+</style>
+
+<main class="card">
+  <div class="flag" aria-hidden="true">🏴‍☠️</div>
+  <h1 class="wordmark">FREEBOOTER</h1>
+  <div class="rule" aria-hidden="true"></div>
+  <p class="tag">Built on a phone. Shipped to a phone. No Mac was awake.</p>
+
+  <a class="install" href="itms-services://?action=download-manifest&amp;url=https://github.com/ProducerGuy/pirate-booty/releases/download/freebooter-latest/manifest.plist">Install on this iPhone</a>
+  <p class="stamp">BUILD&nbsp;5 · 2026-09-03 12:17&nbsp;UTC · 01a1613</p>
+
+  <ol class="steps">
+    <li><span class="num">1</span><span>Open this page <b>in Safari on your iPhone</b>, then tap <b>Install</b> above.</span></li>
+    <li><span class="num">2</span><span>First time only: <b>Settings → General → VPN &amp; Device Management</b> → trust your developer profile.</span></li>
+    <li><span class="num">3</span><span>Open the app — you should see the skull and <b>Build&nbsp;5</b>.</span></li>
+  </ol>
+
+  <p class="foot"><span class="dot">●</span> Ad-hoc signed — installs only on your registered device.</p>
+</main>
