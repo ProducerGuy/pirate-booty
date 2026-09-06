@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b0e14">
+<title>Broadside</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root { --ink:#ece7db; --brass:#d8a94b; --muted:#8b8f9a; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; overflow:hidden; background:#0a0c12; }
+  body { font:16px/1.4 -apple-system,system-ui,sans-serif; color:var(--ink);
+         display:flex; flex-direction:column; touch-action:none;
+         padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  #hud { display:flex; justify-content:space-between; align-items:center; padding:10px 16px; font-variant-numeric:tabular-nums; }
+  #hud .s { font-weight:700; font-size:1.1rem; }
+  #hud .brass { color:var(--brass); }
+  #hud .muted { color:var(--muted); font:11px/1 ui-monospace,monospace; }
+  #wrap { position:relative; flex:1; }
+  canvas { display:block; width:100%; height:100%; }
+  #over { position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center;
+          background:rgba(8,10,16,.82); backdrop-filter:blur(3px); text-align:center; gap:6px; }
+  #over.show { display:flex; }
+  #over .flag { font-size:64px; }
+  #over h1 { margin:.1em 0; font-size:1.6rem; letter-spacing:.04em; }
+  #over .final { font-size:2.4rem; font-weight:800; color:var(--brass); font-variant-numeric:tabular-nums; }
+  #over button { margin-top:14px; padding:14px 34px; border:0; border-radius:12px; font:700 1.1rem system-ui;
+                 background:linear-gradient(180deg,var(--brass),#b8862f); color:#221806; }
+  #over button:active { transform:translateY(1px); }
+  #hint { color:var(--muted); font-size:.85rem; margin-top:4px; }
+</style>
+</head>
+<body>
+  <div id="hud">
+    <div><span class="s">Score <span id="score" class="brass">0</span></span></div>
+    <div class="muted">BROADSIDE · build <span id="build">6</span></div>
+    <div><span class="s">⏱ <span id="time">60</span></span></div>
+  </div>
+  <div id="wrap">
+    <canvas id="c"></canvas>
+    <div id="over">
+      <div class="flag">🏴‍☠️</div>
+      <h1 id="title">TAP A SHIP TO FIRE</h1>
+      <div class="final" id="final" hidden>0</div>
+      <div id="hint">Best <span id="best">0</span> · sink ships before they escape</div>
+      <button id="go">Set Sail</button>
+    </div>
+  </div>
+<script>
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+let W=0,H=0,DPR=Math.min(devicePixelRatio||1,2);
+function resize(){const r=cv.getBoundingClientRect();W=r.width;H=r.height;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);}
+addEventListener('resize',resize);
+
+let ships=[], balls=[], parts=[], score=0, best=+(localStorage.getItem('broadside_best')||0), timeLeft=60, running=false, last=0, spawnT=0;
+$('best').textContent=best;
+
+function rnd(a,b){return a+Math.random()*(b-a);}
+function cannon(){return {x:W/2,y:H-24};}
+
+function spawnShip(){
+  const dir=Math.random()<.5?1:-1;
+  const y=rnd(H*0.14,H*0.5);
+  const sp=rnd(40,70)+ (60-timeLeft)*1.1;
+  ships.push({x:dir>0?-40:W+40,y,dir,sp,w:44,h:18,sunk:false,bob:Math.random()*6});
+}
+function fireAt(tx,ty){
+  const c=cannon();
+  balls.push({x:c.x,y:c.y,tx,ty,t:0,dur:rnd(.45,.62),sx:c.x,sy:c.y});
+  boom();
+  if(navigator.vibrate)navigator.vibrate(12);
+}
+function boom(){const c=cannon();for(let i=0;i<8;i++)parts.push({x:c.x,y:c.y,vx:rnd(-40,40),vy:rnd(-120,-40),life:.4,c:'#d8a94b'});}
+function splash(x,y){for(let i=0;i<16;i++)parts.push({x,y,vx:rnd(-90,90),vy:rnd(-160,-20),life:.6,c:i%3?'#7fb3d5':'#ece7db'});}
+
+function tap(e){
+  e.preventDefault();
+  const r=cv.getBoundingClientRect();
+  const p=e.touches?e.touches[0]:e;
+  const x=p.clientX-r.left, y=p.clientY-r.top;
+  if(!running)return;
+  fireAt(x,y);
+}
+cv.addEventListener('touchstart',tap,{passive:false});
+cv.addEventListener('mousedown',tap);
+
+function start(){
+  ships=[];balls=[];parts=[];score=0;timeLeft=60;running=true;spawnT=0;
+  $('score').textContent=0;$('time').textContent=60;$('over').classList.remove('show');
+  last=performance.now();requestAnimationFrame(loop);
+}
+$('go').addEventListener('click',start);
+
+function end(){
+  running=false;
+  if(score>best){best=score;localStorage.setItem('broadside_best',best);}
+  $('title').textContent= score>0 ? 'YE DID WELL, CAPTAIN' : 'THE SEA WON';
+  $('final').hidden=false;$('final').textContent=score;
+  $('best').textContent=best;$('go').textContent='Again';
+  $('over').classList.add('show');
+}
+
+function loop(now){
+  const dt=Math.min((now-last)/1000,.05);last=now;
+  if(running){
+    timeLeft-=dt; if(timeLeft<=0){timeLeft=0;$('time').textContent=0;return end();}
+    $('time').textContent=Math.ceil(timeLeft);
+    spawnT-=dt; if(spawnT<=0){spawnShip();spawnT=Math.max(.5,1.4-(60-timeLeft)*0.02);}
+  }
+  // update
+  for(const s of ships){ if(!s.sunk){s.x+=s.dir*s.sp*dt; s.bob+=dt*3;} }
+  ships=ships.filter(s=> s.x>-60 && s.x<W+60 && !s.dead);
+  for(const b of balls){
+    b.t+=dt; const k=Math.min(b.t/b.dur,1);
+    b.x=b.sx+(b.tx-b.sx)*k; b.y=b.sy+(b.ty-b.sy)*k - Math.sin(k*Math.PI)*120;
+    if(k>=1){ b.done=true; // impact
+      let hit=false;
+      for(const s of ships){ if(!s.sunk && Math.abs(s.x-b.tx)<s.w*0.7 && Math.abs(s.y-b.ty)<26){ s.sunk=true; s.sinkT=0; hit=true; score+=10; $('score').textContent=score; splash(s.x,s.y); if(navigator.vibrate)navigator.vibrate([0,20,30,20]); break; } }
+      if(!hit) splash(b.tx,b.ty);
+    }
+  }
+  balls=balls.filter(b=>!b.done);
+  for(const s of ships){ if(s.sunk){ s.sinkT=(s.sinkT||0)+dt; s.y+=30*dt; if(s.sinkT>.7)s.dead=true; } }
+  for(const p of parts){ p.life-=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=400*dt; }
+  parts=parts.filter(p=>p.life>0);
+
+  // draw
+  ctx.clearRect(0,0,W,H);
+  // sea
+  const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#0b1420'); g.addColorStop(1,'#0a1a2b');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  ctx.globalAlpha=.15; ctx.strokeStyle='#7fb3d5'; ctx.lineWidth=1;
+  for(let i=0;i<5;i++){const yy=H*0.55+i*14; ctx.beginPath();ctx.moveTo(0,yy);for(let x=0;x<=W;x+=20)ctx.lineTo(x,yy+Math.sin((x*0.03)+i+last*0.001)*3);ctx.stroke();}
+  ctx.globalAlpha=1;
+  // ships
+  for(const s of ships){
+    ctx.save(); ctx.translate(s.x, s.y+Math.sin(s.bob)*2); ctx.globalAlpha=s.sunk?Math.max(0,1-(s.sinkT/.7)):1;
+    ctx.fillStyle='#2b1d10'; ctx.beginPath(); ctx.moveTo(-s.w/2,0); ctx.lineTo(s.w/2,0); ctx.lineTo(s.w/2-8,s.h); ctx.lineTo(-s.w/2+8,s.h); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#e8e2d4'; ctx.fillRect(-2,-22,4,22); // mast
+    ctx.fillStyle=s.dir>0?'#c94f4f':'#4f7fc9'; ctx.beginPath(); ctx.moveTo(2,-20); ctx.lineTo(18,-12); ctx.lineTo(2,-6); ctx.closePath(); ctx.fill(); // sail
+    ctx.restore();
+  }
+  // cannon
+  const c=cannon(); ctx.fillStyle='#3a2a18'; ctx.fillRect(c.x-16,c.y-6,32,22); ctx.fillStyle='#d8a94b'; ctx.fillRect(c.x-4,c.y-16,8,16);
+  // balls
+  ctx.fillStyle='#111'; for(const b of balls){ ctx.beginPath(); ctx.arc(b.x,b.y,4,0,7); ctx.fill(); }
+  // particles
+  for(const p of parts){ ctx.globalAlpha=Math.max(0,p.life*1.6); ctx.fillStyle=p.c; ctx.fillRect(p.x,p.y,3,3); }
+  ctx.globalAlpha=1;
+  if(running||parts.length) requestAnimationFrame(loop);
+}
+resize();
+// idle sea while on menu
+(function idle(){ if(!running){ ctx.clearRect(0,0,W,H); const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#0b1420');g.addColorStop(1,'#0a1a2b');ctx.fillStyle=g;ctx.fillRect(0,0,W,H); requestAnimationFrame(idle);} })();
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
