@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b0e14">
+<title>Captain's Log</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+ :root{--ground:#0c0d10;--panel:#14161c;--ink:#ece7db;--muted:#8b8f9a;--brass:#d8a94b;--brass2:#b8862f;--line:#23262f;--ok:#6fbf8b}
+ *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+ html,body{margin:0;height:100%}
+ body{background:var(--ground);color:var(--ink);font:16px/1.5 -apple-system,system-ui,sans-serif;
+      display:flex;flex-direction:column;min-height:100dvh;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+ header{padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+ .title{font-weight:800;letter-spacing:.02em;font-size:1.15rem;display:flex;align-items:center;gap:8px}
+ .status{display:flex;justify-content:space-between;gap:12px;margin-top:8px;font:12px/1.4 ui-monospace,Menlo,monospace;color:var(--muted)}
+ .status b{color:var(--ink);font-weight:600}
+ .dot{color:var(--ok)}
+ main{flex:1;display:flex;padding:12px 12px 0}
+ textarea{flex:1;width:100%;resize:none;border:0;outline:none;background:transparent;color:var(--ink);
+          font:16px/1.65 ui-monospace,Menlo,monospace;padding:6px 4px}
+ textarea::placeholder{color:#454b57}
+ .bar{display:flex;gap:10px;padding:12px}
+ button{flex:1;padding:14px;border:0;border-radius:12px;font:700 1rem system-ui;color:#221806;background:linear-gradient(180deg,var(--brass),var(--brass2))}
+ button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+ button:active{transform:translateY(1px)}
+ .build{font:11px/1 ui-monospace,monospace;color:#454b57;padding:0 16px 8px}
+</style>
+</head>
+<body>
+ <header>
+   <div class="title"><span>🏴‍☠️</span> Captain's Log</div>
+   <div class="status">
+     <span id="saved"><span class="dot">●</span> <b>Saved</b></span>
+     <span id="backed">Backed up: <b>never</b></span>
+   </div>
+ </header>
+ <main><textarea id="log" placeholder="Write yer log, Captain… it saves itself."></textarea></main>
+ <div class="bar">
+   <button id="backup">Back up</button>
+   <button id="restore" class="ghost">Restore</button>
+ </div>
+ <div class="build">save-primitive test · build 1</div>
+<script src="fb-save.js"></script>
+<script>
+ const $=id=>document.getElementById(id), log=$('log');
+ let state={text:'',lastBackup:null}, t=null;
+ const clock=iso=>iso?new Date(iso).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'';
+ const stamp=iso=>iso?new Date(iso).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'never';
+ const showSaved=ts=>$('saved').innerHTML='<span class="dot">●</span> <b>Saved</b> '+clock(ts);
+ const showSaving=()=>$('saved').innerHTML='<b>Saving…</b>';
+ const showBacked=()=>$('backed').innerHTML='Backed up: <b>'+stamp(state.lastBackup)+'</b>';
+ async function boot(){
+   await FBSave.init('captains-log');
+   const s=await FBSave.load(); if(s){ state=Object.assign(state,s); log.value=state.text||''; }
+   const m=await FBSave.meta(); showSaved(m&&m.updatedAt); showBacked();
+ }
+ log.addEventListener('input',()=>{ state.text=log.value; showSaving(); clearTimeout(t);
+   t=setTimeout(async()=>{ showSaved(await FBSave.save(state)); },350); });
+ $('backup').addEventListener('click',async()=>{ state.lastBackup=new Date().toISOString();
+   await FBSave.save(state); showBacked(); try{ await FBSave.backup(state); }catch(e){} });
+ $('restore').addEventListener('click',async()=>{ try{ const s=await FBSave.restore();
+   if(s){ state=Object.assign({text:'',lastBackup:null},s); log.value=state.text||'';
+     showSaved(await FBSave.save(state)); showBacked(); } }catch(e){} });
+ if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+ boot();
+</script>
+</body>
+</html>
