@@ -44,7 +44,12 @@
    <button id="backup">Back up</button>
    <button id="restore" class="ghost">Restore</button>
  </div>
- <div class="build">save-primitive test · build 1</div>
+ <div class="build">save-primitive test · build 2</div>
+<script>
+ /* self-heal: kill any stuck service worker + old caches from earlier flaky loads */
+ try{ if('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{}); }catch(e){}
+ try{ if(window.caches) caches.keys().then(ks=>ks.forEach(k=>caches.delete(k))).catch(()=>{}); }catch(e){}
+</script>
 <script src="fb-save.js"></script>
 <script>
  const $=id=>document.getElementById(id), log=$('log');
@@ -66,7 +71,6 @@
  $('restore').addEventListener('click',async()=>{ try{ const s=await FBSave.restore();
    if(s){ state=Object.assign({text:'',lastBackup:null},s); log.value=state.text||'';
      showSaved(await FBSave.save(state)); showBacked(); } }catch(e){} });
- if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
  boot();
 </script>
 </body>

@@ -1,7 +1,8 @@
-const CACHE = "captains-log-v1";
-const ASSETS = ["./", "index.html", "fb-save.js", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
-self.addEventListener("install", (e) => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS))); });
-self.addEventListener("activate", (e) => e.waitUntil(
-  caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())
-));
-self.addEventListener("fetch", (e) => e.respondWith(caches.match(e.request).then((hit) => hit || fetch(e.request))));
+/* Self-destruct worker: replaces the earlier caching SW. Clears caches, unregisters
+   itself, and reloads controlled pages — so any device stuck on the old worker heals. */
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (e) => e.waitUntil((async () => {
+  try { const ks = await caches.keys(); await Promise.all(ks.map((k) => caches.delete(k))); } catch (_) {}
+  try { await self.registration.unregister(); } catch (_) {}
+  try { const cs = await self.clients.matchAll({ type: 'window' }); cs.forEach((c) => c.navigate(c.url)); } catch (_) {}
+})()));
