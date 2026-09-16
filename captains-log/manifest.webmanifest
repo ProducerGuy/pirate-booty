@@ -1,0 +1,15 @@
+{
+  "name": "Captain's Log",
+  "short_name": "Log",
+  "description": "Freebooter save-primitive test — autosave + one-tap iCloud backup/restore.",
+  "display": "standalone",
+  "orientation": "portrait",
+  "start_url": ".",
+  "scope": ".",
+  "background_color": "#0c0d10",
+  "theme_color": "#0b0e14",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
