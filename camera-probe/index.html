@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FB Camera">
+<meta name="theme-color" content="#0b0f14">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Freebooter Camera Probe</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px;
+    background: #0b0f14; color: #e8eef5;
+    font: 16px/1.4 -apple-system, system-ui, sans-serif;
+    max-width: 640px; margin-inline: auto;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #8aa0b6; font-size: 13px; margin: 0 0 16px; }
+  .env { font: 12px/1.4 ui-monospace, Menlo, monospace; color: #9fb3c8;
+         background: #121822; border: 1px solid #223247; border-radius: 8px;
+         padding: 8px 10px; margin-bottom: 16px; white-space: pre-wrap; word-break: break-word; }
+  button {
+    display: block; width: 100%; margin: 8px 0; padding: 16px;
+    font-size: 18px; font-weight: 600; border: 0; border-radius: 12px;
+    background: #2d6cdf; color: #fff; -webkit-tap-highlight-color: transparent;
+  }
+  button.secondary { background: #24344a; }
+  button:disabled { opacity: .4; }
+  video, #shot { width: 100%; border-radius: 12px; background: #000;
+                 margin: 12px 0; display: block; }
+  #shotWrap { display: none; }
+  #readout { font: 15px/1.5 ui-monospace, Menlo, monospace; font-weight: 700;
+             color: #6ee7a8; text-align: center; margin: 6px 0 4px; }
+  #verdict { text-align: center; font-weight: 700; font-size: 15px; margin-bottom: 8px; }
+  .ok { color: #6ee7a8; } .bad { color: #ff8a8a; } .warn { color: #ffd479; }
+  h2 { font-size: 14px; color: #8aa0b6; margin: 20px 0 6px; text-transform: uppercase; letter-spacing: .04em; }
+  #log { font: 12px/1.5 ui-monospace, Menlo, monospace; color: #cfe0f0;
+         background: #121822; border: 1px solid #223247; border-radius: 8px;
+         padding: 10px; white-space: pre-wrap; word-break: break-word; min-height: 60px; }
+</style>
+</head>
+<body>
+  <h1>Freebooter — Camera Probe</h1>
+  <p class="sub">CAM-01 · proving an installed app can open the camera and capture a real photo</p>
+
+  <div class="env" id="env">reading environment…</div>
+
+  <button id="startBtn">Start Camera</button>
+  <button id="flipBtn" class="secondary" disabled>Flip Camera (front / back)</button>
+
+  <video id="video" playsinline autoplay muted></video>
+
+  <button id="capBtn" disabled>Capture Photo</button>
+
+  <div id="shotWrap">
+    <div id="readout"></div>
+    <div id="verdict"></div>
+    <canvas id="shot"></canvas>
+  </div>
+
+  <h2>Evidence log</h2>
+  <div id="log"></div>
+
+<script>
+(function () {
+  var video   = document.getElementById('video');
+  var shot    = document.getElementById('shot');
+  var shotWrap= document.getElementById('shotWrap');
+  var readout = document.getElementById('readout');
+  var verdict = document.getElementById('verdict');
+  var startBtn= document.getElementById('startBtn');
+  var flipBtn = document.getElementById('flipBtn');
+  var capBtn  = document.getElementById('capBtn');
+  var logEl   = document.getElementById('log');
+  var envEl   = document.getElementById('env');
+
+  var stream = null;
+  var facing = 'environment'; // start on the back camera
+
+  function log(msg, cls) {
+    var t = new Date().toLocaleTimeString();
+    var line = '[' + t + '] ' + msg;
+    var span = document.createElement('div');
+    if (cls) span.className = cls;
+    span.textContent = line;
+    logEl.appendChild(span);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // --- environment / "installed?" detection (for the record) ---
+  var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+                   || window.navigator.standalone === true;
+  var hasGUM = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  var secure = window.isSecureContext;
+  envEl.textContent =
+    'Installed app (standalone): ' + (standalone ? 'YES' : 'NO — opened in browser') + '\n' +
+    'Secure context (HTTPS): ' + (secure ? 'yes' : 'NO') + '\n' +
+    'getUserMedia available: ' + (hasGUM ? 'yes' : 'NO') + '\n' +
+    'Device: ' + navigator.userAgent;
+
+  log('Init — standalone=' + standalone + ', getUserMedia=' + hasGUM + ', secureContext=' + secure,
+      hasGUM ? 'ok' : 'bad');
+  if (!hasGUM) log('Init FAILED: this browser exposes no getUserMedia. Cannot start camera.', 'bad');
+
+  function stopStream() {
+    if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+  }
+
+  function start(which) {
+    if (!hasGUM) return;
+    stopStream();
+    facing = which;
+    log('Requesting ' + (facing === 'environment' ? 'BACK' : 'FRONT') + ' camera …');
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing } }, audio: false })
+      .then(function (s) {
+        stream = s;
+        video.srcObject = s;
+        var p = video.play(); if (p && p.catch) p.catch(function(){});
+        var track = s.getVideoTracks()[0];
+        var label = track ? track.label : '(unnamed)';
+        log('Permission GRANTED — live stream started. Camera: ' + label, 'ok');
+        video.onloadedmetadata = function () {
+          log('Live video: ' + video.videoWidth + '×' + video.videoHeight + ' (' +
+              (facing === 'environment' ? 'BACK' : 'FRONT') + ')', 'ok');
+        };
+        capBtn.disabled = false;
+        flipBtn.disabled = false;
+        startBtn.textContent = 'Restart Camera';
+      })
+      .catch(function (err) {
+        log('Permission/stream FAILED: ' + err.name + ' — ' + err.message, 'bad');
+        if (err.name === 'NotAllowedError')
+          log('You (or iOS) denied camera access. Enable it in Settings › the app, then retry.', 'warn');
+      });
+  }
+
+  function capture() {
+    if (!stream || !video.videoWidth) { log('Capture skipped: no live frame yet.', 'warn'); return; }
+    var w = video.videoWidth, h = video.videoHeight;
+    shot.width = w; shot.height = h;
+    var ctx = shot.getContext('2d');
+    ctx.drawImage(video, 0, 0, w, h);
+
+    // Prove the pixels are real: average brightness over a sample of the frame.
+    var bright = -1;
+    try {
+      var data = ctx.getImageData(0, 0, w, h).data;
+      var sum = 0, n = 0;
+      for (var i = 0; i < data.length; i += 4 * 17) { // sample every 17th pixel
+        sum += (data[i] + data[i + 1] + data[i + 2]) / 3; n++;
+      }
+      bright = Math.round((sum / n) / 255 * 100);
+    } catch (e) {
+      log('Pixel read FAILED: ' + e.name + ' — ' + e.message, 'bad');
+    }
+
+    shotWrap.style.display = 'block';
+    readout.textContent = w + '×' + h + '  ·  brightness ' + (bright < 0 ? '?' : bright + '%');
+
+    if (bright > 2) {
+      verdict.textContent = 'REAL IMAGE CAPTURED (non-black pixels) — PROVEN';
+      verdict.className = 'ok';
+      log('Capture OK — ' + w + '×' + h + ', brightness ' + bright + '%. Real pixels. PROVEN.', 'ok');
+    } else if (bright >= 0) {
+      verdict.textContent = 'Frame captured but looks BLACK (brightness ' + bright + '%) — PARTIAL';
+      verdict.className = 'warn';
+      log('Capture PARTIAL — frame is black/blank (brightness ' + bright + '%). Point at light and retry.', 'warn');
+    } else {
+      verdict.textContent = 'Could not read pixels — PARTIAL';
+      verdict.className = 'bad';
+    }
+  }
+
+  startBtn.addEventListener('click', function () { start(facing); });
+  flipBtn.addEventListener('click', function () {
+    start(facing === 'environment' ? 'user' : 'environment');
+  });
+  capBtn.addEventListener('click', capture);
+
+  // Camera releases when the app is backgrounded (installed web apps have no background).
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden && stream) log('App backgrounded — camera suspends (expected; no background for web apps).', 'warn');
+  });
+})();
+</script>
+</body>
+</html>
