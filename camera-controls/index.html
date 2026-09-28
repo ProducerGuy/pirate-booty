@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FB Cam Controls">
+<meta name="theme-color" content="#0b0f14">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Freebooter Camera Controls Probe</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px; background:#0b0f14; color:#e8eef5;
+         font:16px/1.4 -apple-system, system-ui, sans-serif; max-width:640px; margin-inline:auto; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:#8aa0b6; font-size:13px; margin:0 0 14px; }
+  .env,#caps { font:12px/1.4 ui-monospace, Menlo, monospace; color:#9fb3c8; background:#121822;
+        border:1px solid #223247; border-radius:8px; padding:8px 10px; margin-bottom:12px;
+        white-space:pre-wrap; word-break:break-word; }
+  button { display:block; width:100%; margin:8px 0; padding:15px; font-size:17px; font-weight:600;
+           border:0; border-radius:12px; background:#2d6cdf; color:#fff; -webkit-tap-highlight-color:transparent; }
+  button.secondary { background:#24344a; } button.rec { background:#b23b3b; } button.save{background:#1f8f5f;}
+  button:disabled { opacity:.4; }
+  input[type=file]{ display:none; }
+  .row { display:flex; gap:8px; } .row button{ margin:8px 0; }
+  video,#shot,#vid { width:100%; border-radius:12px; background:#000; margin:10px 0; display:block; }
+  .ctl { margin:12px 0 2px; } .ctl label{ font-size:14px; color:#cfe0f0; display:flex; justify-content:space-between; margin-bottom:6px; }
+  input[type=range]{ width:100%; }
+  #shotInfo{ font:13px/1.4 ui-monospace, Menlo, monospace; color:#6ee7a8; text-align:center; }
+  h2 { font-size:14px; color:#8aa0b6; margin:18px 0 6px; text-transform:uppercase; letter-spacing:.04em; }
+  #log { font:12px/1.5 ui-monospace, Menlo, monospace; color:#cfe0f0; background:#121822;
+         border:1px solid #223247; border-radius:8px; padding:10px; white-space:pre-wrap; word-break:break-word; min-height:48px; }
+  .ok{color:#6ee7a8;} .bad{color:#ff8a8a;} .warn{color:#ffd479;}
+  .hide{ display:none; }
+</style>
+</head>
+<body>
+  <h1>Freebooter — Camera Controls Probe</h1>
+  <p class="sub">Firing every camera function and reporting yes / no, live on your phone</p>
+
+  <div class="env" id="env">reading environment…</div>
+
+  <div class="row">
+    <button id="r720" class="secondary">Start 720p</button>
+    <button id="r1080">Start 1080p</button>
+    <button id="r4k" class="secondary">Start 4K</button>
+  </div>
+  <button id="flip" class="secondary" disabled>Flip front / back</button>
+
+  <video id="video" playsinline autoplay muted></video>
+  <div id="caps" class="hide">capabilities…</div>
+
+  <div class="ctl hide" id="zoomWrap">
+    <label>Zoom <span id="zval">1.0×</span></label>
+    <input type="range" id="zoom" min="1" max="1" step="0.1" value="1">
+  </div>
+  <button id="torch" class="secondary hide">Torch: OFF</button>
+
+  <button id="photo" disabled>Take FULL-RES photo (ImageCapture)</button>
+  <div id="shotInfo"></div>
+  <canvas id="shot" class="hide"></canvas>
+
+  <button id="rec" class="rec" disabled>Record 4s video (MediaRecorder)</button>
+  <video id="vid" controls playsinline class="hide"></video>
+
+  <button id="nativeVidBtn" class="secondary">Native camera → VIDEO (file input)</button>
+  <input type="file" id="nativeVid" accept="video/*" capture="environment">
+
+  <h2>Evidence log — yes / no per function</h2>
+  <div id="log"></div>
+
+<script>
+(function () {
+  var $=function(id){return document.getElementById(id);};
+  var video=$('video'), caps=$('caps'), logEl=$('log'), envEl=$('env');
+  var zoomWrap=$('zoomWrap'), zoom=$('zoom'), zval=$('zval'), torch=$('torch');
+  var photoBtn=$('photo'), shot=$('shot'), shotInfo=$('shotInfo');
+  var recBtn=$('rec'), vid=$('vid'), flip=$('flip');
+  var stream=null, track=null, facing='environment', torchOn=false, rec=null, chunks=[];
+
+  function log(m,c){ var s=document.createElement('div'); if(c)s.className=c;
+    s.textContent='['+new Date().toLocaleTimeString()+'] '+m; logEl.appendChild(s); logEl.scrollTop=logEl.scrollHeight; }
+
+  var stand=(window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;
+  envEl.textContent='Installed app (standalone): '+(stand?'YES':'NO — browser tab')+'\n'+
+    'getUserMedia: '+(!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia))+'\n'+
+    'ImageCapture: '+('ImageCapture' in window)+'\n'+
+    'MediaRecorder: '+('MediaRecorder' in window)+'\n'+
+    'Device: '+navigator.userAgent;
+  log('ImageCapture in window: '+('ImageCapture' in window), ('ImageCapture' in window)?'ok':'warn');
+  log('MediaRecorder in window: '+('MediaRecorder' in window), ('MediaRecorder' in window)?'ok':'warn');
+
+  function stop(){ if(stream){stream.getTracks().forEach(function(t){t.stop();}); stream=null; track=null;} }
+
+  function start(w,h){
+    stop();
+    var c={ video:{ facingMode:{ideal:facing}, width:{ideal:w}, height:{ideal:h} }, audio:true };
+    log('Requesting '+w+'×'+h+' ('+(facing==='environment'?'BACK':'FRONT')+') …');
+    navigator.mediaDevices.getUserMedia(c).then(function(s){
+      stream=s; video.srcObject=s; var p=video.play(); if(p&&p.catch)p.catch(function(){});
+      track=s.getVideoTracks()[0];
+      var set=track.getSettings?track.getSettings():{};
+      log('Stream OK — actual '+ (set.width||'?')+'×'+(set.height||'?')+'. Asked '+w+'×'+h+'.', 'ok');
+      probeCaps();
+      photoBtn.disabled=false; recBtn.disabled=false; flip.disabled=false;
+    }).catch(function(e){ log('getUserMedia FAILED: '+e.name+' — '+e.message,'bad'); });
+  }
+
+  function probeCaps(){
+    if(!track||!track.getCapabilities){ caps.classList.remove('hide'); caps.textContent='getCapabilities(): NOT supported on this browser.'; log('getCapabilities(): NO','warn'); return; }
+    var cap=track.getCapabilities(); var set=track.getSettings?track.getSettings():{};
+    caps.classList.remove('hide');
+    caps.textContent='getCapabilities():\n'+JSON.stringify(cap,null,1);
+    log('getCapabilities(): YES','ok');
+    // zoom
+    if(cap.zoom && cap.zoom.max>cap.zoom.min){
+      zoomWrap.classList.remove('hide');
+      zoom.min=cap.zoom.min; zoom.max=cap.zoom.max; zoom.step=cap.zoom.step||0.1; zoom.value=set.zoom||cap.zoom.min;
+      zval.textContent=(+zoom.value).toFixed(1)+'×';
+      log('zoom: YES ('+cap.zoom.min+'–'+cap.zoom.max+')','ok');
+    } else { zoomWrap.classList.add('hide'); log('zoom: no','warn'); }
+    // torch
+    if(cap.torch){ torch.classList.remove('hide'); log('torch: YES','ok'); }
+    else { torch.classList.add('hide'); log('torch: no','warn'); }
+    if(cap.focusMode) log('focusMode options: '+cap.focusMode.join(','),'ok');
+    if(cap.exposureMode) log('exposureMode options: '+cap.exposureMode.join(','),'ok');
+    if(cap.width&&cap.height) log('max resolution the camera reports: '+cap.width.max+'×'+cap.height.max,'ok');
+  }
+
+  zoom.addEventListener('input',function(){
+    zval.textContent=(+zoom.value).toFixed(1)+'×';
+    if(track&&track.applyConstraints) track.applyConstraints({advanced:[{zoom:+zoom.value}]}).catch(function(e){log('zoom applyConstraints failed: '+e.name,'bad');});
+  });
+  torch.addEventListener('click',function(){
+    torchOn=!torchOn;
+    if(track&&track.applyConstraints) track.applyConstraints({advanced:[{torch:torchOn}]})
+      .then(function(){ torch.textContent='Torch: '+(torchOn?'ON':'OFF'); log('torch '+(torchOn?'ON':'OFF'),'ok'); })
+      .catch(function(e){ log('torch failed: '+e.name,'bad'); });
+  });
+
+  photoBtn.addEventListener('click',function(){
+    if('ImageCapture' in window && track){
+      try {
+        var ic=new ImageCapture(track);
+        ic.getPhotoCapabilities().then(function(pc){ log('PhotoCapabilities max: '+ (pc.imageWidth?pc.imageWidth.max:'?')+'×'+(pc.imageHeight?pc.imageHeight.max:'?'),'ok'); }).catch(function(){});
+        ic.takePhoto().then(function(blob){
+          var img=new Image(); img.onload=function(){
+            shot.classList.remove('hide'); shot.width=img.naturalWidth; shot.height=img.naturalHeight;
+            shot.getContext('2d').drawImage(img,0,0);
+            shotInfo.textContent='ImageCapture.takePhoto(): '+img.naturalWidth+'×'+img.naturalHeight+' — '+Math.round(blob.size/1024)+' KB';
+            log('ImageCapture.takePhoto(): YES — '+img.naturalWidth+'×'+img.naturalHeight,'ok');
+          }; img.src=URL.createObjectURL(blob);
+        }).catch(function(e){ log('takePhoto FAILED: '+e.name+' — falling back to canvas grab','warn'); canvasGrab(); });
+      } catch(e){ log('ImageCapture ctor FAILED: '+e.name,'warn'); canvasGrab(); }
+    } else { log('ImageCapture: NO on this browser — using canvas grab from the live stream instead','warn'); canvasGrab(); }
+  });
+  function canvasGrab(){
+    if(!video.videoWidth){ log('no frame yet','warn'); return; }
+    shot.classList.remove('hide'); shot.width=video.videoWidth; shot.height=video.videoHeight;
+    shot.getContext('2d').drawImage(video,0,0);
+    shotInfo.textContent='Canvas grab: '+video.videoWidth+'×'+video.videoHeight+' (limited by the stream resolution above)';
+    log('Canvas grab: '+video.videoWidth+'×'+video.videoHeight,'ok');
+  }
+
+  recBtn.addEventListener('click',function(){
+    if(!('MediaRecorder' in window)||!stream){ log('MediaRecorder: NO','bad'); return; }
+    if(rec&&rec.state==='recording'){ rec.stop(); return; }
+    chunks=[];
+    try { rec=new MediaRecorder(stream); } catch(e){ log('MediaRecorder ctor FAILED: '+e.name,'bad'); return; }
+    rec.ondataavailable=function(e){ if(e.data.size)chunks.push(e.data); };
+    rec.onstop=function(){
+      var blob=new Blob(chunks,{type:chunks[0]?chunks[0].type:'video/mp4'});
+      vid.classList.remove('hide'); vid.src=URL.createObjectURL(blob);
+      recBtn.textContent='Record 4s video (MediaRecorder)';
+      log('MediaRecorder: YES — recorded '+Math.round(blob.size/1024)+' KB, type '+blob.type,'ok');
+    };
+    rec.start(); recBtn.textContent='● Recording… (tap to stop)';
+    log('MediaRecorder: recording started ('+ (rec.mimeType||'default type')+')','ok');
+    setTimeout(function(){ if(rec&&rec.state==='recording') rec.stop(); },4000);
+  });
+
+  flip.addEventListener('click',function(){ facing=(facing==='environment')?'user':'environment'; start(1920,1080); });
+  $('r720').addEventListener('click',function(){ start(1280,720); });
+  $('r1080').addEventListener('click',function(){ start(1920,1080); });
+  $('r4k').addEventListener('click',function(){ start(3840,2160); });
+
+  $('nativeVidBtn').addEventListener('click',function(){ $('nativeVid').click(); });
+  $('nativeVid').addEventListener('change',function(e){ var f=e.target.files[0];
+    if(f){ log('Native VIDEO capture: YES — '+f.type+', '+Math.round(f.size/1024)+' KB','ok');
+      vid.classList.remove('hide'); vid.src=URL.createObjectURL(f); } });
+})();
+</script>
+</body>
+</html>
