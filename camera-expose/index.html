@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="FB Cam Expose">
+<meta name="apple-mobile-web-app-title" content="FB Cam Names">
 <meta name="theme-color" content="#0b0f14">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
-<title>Freebooter Camera Expose</title>
+<title>Freebooter Camera Names</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -20,100 +20,69 @@
   h2 { font-size:14px; color:#8aa0b6; margin:18px 0 8px; text-transform:uppercase; letter-spacing:.04em; }
   button { display:block; width:100%; margin:8px 0; padding:15px; font-size:17px; font-weight:600;
            border:0; border-radius:12px; background:#2d6cdf; color:#fff; -webkit-tap-highlight-color:transparent; }
-  .row { display:flex; gap:8px; } .row button { margin:8px 0; background:#24344a; }
-  button:disabled { opacity:.4; }
-  video { width:100%; border-radius:12px; background:#000; margin:8px 0; display:block; max-height:38vh; object-fit:cover; }
-  .box { background:#121822; border:1px solid #223247; border-radius:10px; padding:12px; margin:4px 0; }
-  .line { font:13px/1.6 ui-monospace, Menlo, monospace; display:flex; justify-content:space-between; gap:12px; }
-  .k { color:#9fb3c8; } .v { color:#e8eef5; text-align:right; }
-  .big { font:16px/1.5 ui-monospace, Menlo, monospace; font-weight:700; text-align:center; margin:6px 0; }
-  .ok{color:#6ee7a8;} .warn{color:#ffd479;} .bad{color:#ff8a8a;}
+  video { width:100%; border-radius:12px; background:#000; margin:8px 0; display:block; max-height:34vh; object-fit:cover; }
+  .box { background:#121822; border:1px solid #223247; border-radius:10px; padding:10px 12px; margin:4px 0; }
+  .line { font:13px/1.7 ui-monospace, Menlo, monospace; display:flex; justify-content:space-between; gap:12px; border-bottom:1px solid #1b2635; padding:1px 0; }
+  .line:last-child { border-bottom:0; }
+  .k { color:#9fb3c8; } .v { color:#e8eef5; text-align:right; word-break:break-word; }
+  .hit { color:#6ee7a8; font-weight:700; }
 </style>
 </head>
 <body>
-  <h1>Camera — what your phone exposes</h1>
-  <p class="sub">Reads what Safari actually hands the app, and how high the frame rate really goes.</p>
+  <h1>Camera — every name your phone exposes</h1>
+  <p class="sub">No guessing. Dumps the full capability list and every lens, whatever they turn out to be.</p>
 
-  <button id="read">Read camera + capabilities</button>
+  <button id="read">Read camera</button>
   <video id="video" playsinline autoplay muted></video>
 
-  <h2>What your camera exposes</h2>
-  <div class="box" id="caps"><div class="line"><span class="k">tap “Read camera” above</span></div></div>
+  <h2>Capabilities (every key returned)</h2>
+  <div class="box" id="caps"><div class="line"><span class="k">tap “Read camera”</span></div></div>
 
-  <h2>Frame-rate ceiling (slo-mo test)</h2>
-  <div class="row">
-    <button id="f240">240</button><button id="f120">120</button><button id="f60">60</button><button id="f30">30</button>
-  </div>
-  <div class="big" id="fpsResult">pick a target above</div>
+  <h2>Lenses (every camera)</h2>
+  <div class="box" id="lenses"><div class="line"><span class="k">—</span></div></div>
+
+  <h2>Settings now</h2>
+  <div class="box" id="settings"><div class="line"><span class="k">—</span></div></div>
 
 <script>
 (function () {
   var $=function(id){return document.getElementById(id);};
-  var video=$('video'), capsEl=$('caps'), fpsRes=$('fpsResult');
+  var video=$('video'), capsEl=$('caps'), lensEl=$('lenses'), setEl=$('settings');
   var stream=null, track=null;
+  // names worth flagging if they show up
+  var FLAG = {backgroundBlur:1, portraitEffect:1, faceFraming:1, torch:1, zoom:1, focusMode:1, whiteBalanceMode:1, exposureMode:1};
 
-  function stop(){ if(stream){stream.getTracks().forEach(function(t){t.stop();}); stream=null; track=null;} }
-  function row(k,v,cls){ return '<div class="line"><span class="k">'+k+'</span><span class="v '+(cls||'')+'">'+v+'</span></div>'; }
-
-  function dumpCaps(){
-    var out='';
-    var cap = (track&&track.getCapabilities)?track.getCapabilities():null;
-    var set = (track&&track.getSettings)?track.getSettings():{};
-    if(!cap){ out+=row('getCapabilities()','NOT supported','bad'); }
-    else {
-      out+=row('getCapabilities()','supported','ok');
-      out+=row('resolution now', (set.width||'?')+' x '+(set.height||'?'));
-      if(cap.width&&cap.height) out+=row('max resolution', cap.width.max+' x '+cap.height.max);
-      if(cap.frameRate) out+=row('frameRate range', cap.frameRate.min+' – '+cap.frameRate.max, cap.frameRate.max>60?'ok':'');
-      ['zoom','torch','focusMode','exposureMode','whiteBalanceMode','iso','brightness','pan','tilt'].forEach(function(kk){
-        if(kk in cap){ var val=cap[kk]; if(val&&val.max!==undefined)val=val.min+'–'+val.max; else if(Array.isArray(val))val=val.join(',');
-          out+=row(kk, String(val), 'ok'); }
-      });
-    }
-    // ImageCapture / photo caps
-    if('ImageCapture' in window && track){
-      out+=row('ImageCapture','supported','ok');
-      try { new ImageCapture(track).getPhotoCapabilities().then(function(pc){
-        var w=pc.imageWidth?pc.imageWidth.max:'?', h=pc.imageHeight?pc.imageHeight.max:'?';
-        capsEl.innerHTML += row('photo max', w+' x '+h,'ok');
-      }).catch(function(){}); } catch(e){}
-    } else { out+=row('ImageCapture','NOT supported','warn'); }
-    capsEl.innerHTML=out;
+  function fmt(v){
+    if(v===null||v===undefined) return String(v);
+    if(Array.isArray(v)) return v.join(', ');
+    if(typeof v==='object'){ if('min' in v||'max' in v) return (v.min!==undefined?v.min:'?')+' – '+(v.max!==undefined?v.max:'?')+(v.step?' step '+v.step:''); return JSON.stringify(v); }
+    return String(v);
+  }
+  function render(el, obj){
+    var keys = obj?Object.keys(obj):[];
+    if(!keys.length){ el.innerHTML='<div class="line"><span class="k">(nothing returned)</span></div>'; return; }
+    el.innerHTML = keys.map(function(k){
+      var cls = FLAG[k] ? 'k hit' : 'k';
+      return '<div class="line"><span class="'+cls+'">'+k+'</span><span class="v">'+fmt(obj[k])+'</span></div>';
+    }).join('');
   }
 
-  function start(fr, then){
-    stop();
-    var v={ facingMode:{ideal:'environment'} };
-    if(fr){ v.frameRate={ideal:fr}; v.width={ideal:1280}; v.height={ideal:720}; }
-    navigator.mediaDevices.getUserMedia({video:v, audio:false}).then(function(s){
+  $('read').addEventListener('click', function(){
+    if(stream){ stream.getTracks().forEach(function(t){t.stop();}); }
+    navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ideal:'environment'} }, audio:false }).then(function(s){
       stream=s; video.srcObject=s; var p=video.play(); if(p&&p.catch)p.catch(function(){});
       track=s.getVideoTracks()[0];
-      then&&then();
-    }).catch(function(e){ if(then) fpsRes.innerHTML='<span class="bad">failed: '+e.name+'</span>'; else capsEl.innerHTML=row('camera','failed: '+e.name,'bad'); });
-  }
-
-  $('read').addEventListener('click', function(){ start(null, dumpCaps); });
-
-  function measure(target){
-    fpsRes.innerHTML='requesting '+target+'…';
-    start(target, function(){
-      var set=track.getSettings?track.getSettings():{};
-      var reported=set.frameRate||'?';
-      // measure real delivered fps over ~2.5s
-      var frames=0, t0=null;
-      function cb(now){ if(t0===null)t0=now; frames++;
-        if(now-t0 < 2500){ if(video.requestVideoFrameCallback) video.requestVideoFrameCallback(cb); }
-        else { var fps=Math.round(frames/((now-t0)/1000));
-          fpsRes.innerHTML='asked <b>'+target+'</b> · reported <b>'+reported+'</b> · <span class="'+(fps>60?'ok':(fps>=target*0.8?'ok':'warn'))+'">measured '+fps+' fps</span>'; }
-      }
-      if(video.requestVideoFrameCallback){ video.requestVideoFrameCallback(cb); }
-      else { fpsRes.innerHTML='asked '+target+' · reported '+reported+' · (no frame-callback API to measure)'; }
-    });
-  }
-  $('f240').addEventListener('click',function(){measure(240);});
-  $('f120').addEventListener('click',function(){measure(120);});
-  $('f60').addEventListener('click',function(){measure(60);});
-  $('f30').addEventListener('click',function(){measure(30);});
+      render(capsEl, track.getCapabilities ? track.getCapabilities() : null);
+      render(setEl, track.getSettings ? track.getSettings() : null);
+      // lenses
+      navigator.mediaDevices.enumerateDevices().then(function(list){
+        var cams = list.filter(function(d){return d.kind==='videoinput';});
+        lensEl.innerHTML = cams.map(function(d,i){
+          return '<div class="line"><span class="k">'+(d.label||('camera '+(i+1)))+'</span><span class="v">'+d.deviceId.slice(0,10)+'…</span></div>';
+        }).join('') || '<div class="line"><span class="k">(no labels — grant permission first)</span></div>';
+      }).catch(function(e){ lensEl.innerHTML='<div class="line"><span class="k">enumerate failed: '+e.name+'</span></div>'; });
+    }).catch(function(e){ capsEl.innerHTML='<div class="line"><span class="k">camera failed: '+e.name+'</span></div>'; });
+  });
 })();
 </script>
 </body>
